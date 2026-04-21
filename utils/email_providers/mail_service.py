@@ -779,7 +779,6 @@ def get_oai_code(
                 from utils.email_providers.fvia_service import FviaMailService
                 fs = FviaMailService(token=jwt, proxies=mail_proxies)
                 msgs = fs.get_inbox(email)
-
                 for m in msgs:
                     m_id = m.get("id")
                     if not m_id or m_id in processed_mail_ids:
@@ -789,8 +788,24 @@ def get_oai_code(
                     sender = str(m.get("from", "")).lower()
 
                     if "openai" in sender or "openai" in subject.lower() or "chatgpt" in subject:
+                        raw_body = fs.get_message_body(email, m_id)
+                        clean_body = re.sub(r'<[^>]+>', ' ', raw_body)
+                        combined_text = subject + " \n " + clean_body
+                        code = None
+                        new_format = re.findall(r"enter this code:\s*(\d{6})", combined_text, re.I)
+                        if not new_format:
+                            new_format = re.findall(r"verification code to continue:\s*(\d{6})", combined_text, re.I)
 
-                        code = _extract_otp_code(subject)
+                        if new_format:
+                            code = new_format[-1]
+                        else:
+                            direct = re.findall(r"Your ChatGPT code is (\d{6})", combined_text, re.I)
+                            if direct:
+                                code = direct[-1]
+                            else:
+                                generic = re.findall(r"\b(\d{6})\b", combined_text)
+                                if generic:
+                                    code = generic[-1]
 
                         if code:
                             processed_mail_ids.add(m_id)
