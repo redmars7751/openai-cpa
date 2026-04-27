@@ -232,8 +232,9 @@ def get_accounts_page(page: int = 1, page_size: int = 50, hide_reg: str = "0", s
                     "email": r[0],
                     "password": r[1],
                     "created_at": r[2],
-                    "status": "有凭证" if '"access_token"' in str(r[3] or "") else (
-                        "仅注册成功" if '"仅注册成功"' in str(r[3] or "") else "未知"),
+                    "status": "image2api" if '"image2api"' in str(r[3] or "") else (
+                        "有凭证" if '"access_token"' in str(r[3] or "") else (
+                        "仅注册成功" if '"仅注册成功"' in str(r[3] or "") else "未知")),
                     "is_active": r[4] if r[4] is not None else 1,
                     "push_platform": r[5],
                     "push_time": r[6]
@@ -546,6 +547,7 @@ def update_account_push_info(emails: list, platform: str, mode: str = "overwrite
 
 def get_inventory_stats() -> dict:
     try:
+        p = "%%" if DB_TYPE == "mysql" else "%"
         with get_db_conn() as conn:
             c = get_cursor(conn)
             execute_sql(c, """
@@ -554,12 +556,12 @@ def get_inventory_stats() -> dict:
                     SUM(CASE WHEN (push_platform IS NOT NULL AND push_platform != '') AND is_active = 1 THEN 1 ELSE 0 END) as active_count,
                     SUM(CASE WHEN (push_platform IS NOT NULL AND push_platform != '') AND is_active = 0 THEN 1 ELSE 0 END) as disabled_count,
                     SUM(CASE WHEN push_platform IS NULL OR push_platform = '' THEN 1 ELSE 0 END) as unpushed_count,
-                    SUM(CASE WHEN push_platform LIKE '%CPA%' THEN 1 ELSE 0 END) as cpa_total,
-                    SUM(CASE WHEN push_platform LIKE '%CPA%' AND is_active = 1 THEN 1 ELSE 0 END) as cpa_active,
-                    SUM(CASE WHEN push_platform LIKE '%CPA%' AND is_active = 0 THEN 1 ELSE 0 END) as cpa_disabled,
-                    SUM(CASE WHEN push_platform LIKE '%SUB2API%' THEN 1 ELSE 0 END) as sub_total,
-                    SUM(CASE WHEN push_platform LIKE '%SUB2API%' AND is_active = 1 THEN 1 ELSE 0 END) as sub_active,
-                    SUM(CASE WHEN push_platform LIKE '%SUB2API%' AND is_active = 0 THEN 1 ELSE 0 END) as sub_disabled,
+                    SUM(CASE WHEN push_platform LIKE '{p}CPA{p}' THEN 1 ELSE 0 END) as cpa_total,
+                    SUM(CASE WHEN push_platform LIKE '{p}CPA{p}' AND is_active = 1 THEN 1 ELSE 0 END) as cpa_active,
+                    SUM(CASE WHEN push_platform LIKE '{p}CPA{p}' AND is_active = 0 THEN 1 ELSE 0 END) as cpa_disabled,
+                    SUM(CASE WHEN push_platform LIKE '{p}SUB2API{p}' THEN 1 ELSE 0 END) as sub_total,
+                    SUM(CASE WHEN push_platform LIKE '{p}SUB2API{p}' AND is_active = 1 THEN 1 ELSE 0 END) as sub_active,
+                    SUM(CASE WHEN push_platform LIKE '{p}SUB2API{p}' AND is_active = 0 THEN 1 ELSE 0 END) as sub_disabled,
                     SUM(CASE WHEN (push_platform IS NOT NULL AND push_platform != '') THEN 1 ELSE 0 END) as cloud_total
                 FROM accounts
             """)
