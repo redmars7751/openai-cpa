@@ -24,5 +24,7 @@ data
 utils/auth_core/
 !utils/auth_core.pyd
 test.py
+test_register.py
+test_register2.py
 aitest.py
 register.py.bak

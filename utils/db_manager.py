@@ -97,6 +97,15 @@ def init_db():
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
+        execute_sql(c, '''
+                    CREATE TABLE IF NOT EXISTS team_accounts (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        email TEXT,
+                        access_token TEXT,
+                        status INTEGER DEFAULT 1,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
         try:
             execute_sql(c, 'ALTER TABLE local_mailboxes ADD COLUMN fission_count INTEGER DEFAULT 0;')
             execute_sql(c, 'ALTER TABLE local_mailboxes ADD COLUMN retry_master INTEGER DEFAULT 0;')
@@ -544,7 +553,6 @@ def update_account_push_info(emails: list, platform: str, mode: str = "overwrite
     except Exception as e:
         print(f"[{cfg.ts()}] [ERROR] 更新推送状态失败: {e}")
 
-
 def get_inventory_stats() -> dict:
     try:
         p = "%%" if DB_TYPE == "mysql" else "%"
@@ -603,7 +611,6 @@ def update_account_status_by_truncated_name(truncated_name: str, is_active: int)
     except Exception as e:
         print(f"[ERROR] 按截断名称更新活跃状态失败: {e}")
 
-
 def remove_account_push_platform(identifier: str, platform: str, exact_match: bool = True):
     if not identifier: return
     target_platform = platform.strip().upper()
@@ -654,3 +661,99 @@ def update_account_token_only(email: str, token_json_str: str) -> bool:
     except Exception as e:
         print(f"[ERROR] 仅更新 Token 失败: {e}")
         return False
+
+def import_team_accounts(team_data_list: list) -> int:
+    count = 0
+    try:
+        with get_db_conn() as conn:
+            c = get_cursor(conn)
+            for td in team_data_list:
+                try:
+                    execute_sql(c, '''
+                        INSERT OR IGNORE INTO team_accounts (email, access_token, status)
+                        VALUES (?, ?, ?)
+                    ''', (td['email'], td['access_token'], td.get('status', 1)))
+                    if c.rowcount > 0:
+                        count += 1
+                except Exception as ex:
+                    pass
+    except Exception as e:
+        print(f"[{cfg.ts()}] [ERROR] 导入 Team 库失败: {e}")
+    return count
+
+
+def get_team_accounts_page(page: int = 1, page_size: int = 50, search: str = None) -> dict:
+    try:
+        with get_db_conn(as_dict=True) as conn:
+            c = get_cursor(conn, as_dict=True)
+            conditions = []
+            params = []
+
+            if search:
+                conditions.append("(email LIKE ? OR access_token LIKE ?)")
+                search_term = f"%{search}%"
+                params.extend([search_term, search_term])
+
+            where_clause = ""
+            if conditions:
+                where_clause = " WHERE " + " AND ".join(conditions)
+
+            count_sql = f"SELECT COUNT(1) AS cnt FROM team_accounts{where_clause}"
+            if params:
+                execute_sql(c, count_sql, tuple(params))
+            else:
+                execute_sql(c, count_sql)
+
+            total_row = c.fetchone()
+            total = total_row['cnt'] if DB_TYPE == "mysql" else total_row[0]
+            offset = (page - 1) * page_size
+
+            data_sql = f"SELECT id, email, access_token, status, created_at FROM team_accounts{where_clause} ORDER BY id DESC LIMIT ? OFFSET ?"
+            data_params = tuple(params + [page_size, offset])
+            execute_sql(c, data_sql, data_params)
+            rows = c.fetchall()
+
+            return {"total": total, "data": [dict(r) for r in rows]}
+    except Exception as e:
+        print(f"[ERROR] 分页获取 Team 库列表失败: {e}")
+        return {"total": 0, "data": []}
+
+
+def delete_team_accounts(ids: list) -> bool:
+    if not ids: return True
+    try:
+        with get_db_conn() as conn:
+            c = get_cursor(conn)
+            placeholders = ','.join(['?'] * len(ids))
+            execute_sql(c, f"DELETE FROM team_accounts WHERE id IN ({placeholders})", tuple(ids))
+            return True
+    except Exception as e:
+        print(f"[{cfg.ts()}] [ERROR] 删除 Team 账号失败: {e}")
+        return False
+
+
+def clear_all_team_accounts() -> bool:
+    try:
+        with get_db_conn() as conn:
+            c = get_cursor(conn)
+            execute_sql(c, "DELETE FROM team_accounts")
+            return True
+    except Exception as e:
+        print(f"[{cfg.ts()}] [ERROR] 清空 Team 库失败: {e}")
+        return False
+
+
+def get_random_team_account() -> dict:
+    try:
+        with get_db_conn(as_dict=True) as conn:
+            c = get_cursor(conn, as_dict=True)
+            order_clause = "RAND()" if DB_TYPE == "mysql" else "RANDOM()"
+            sql = f"SELECT id, email, access_token FROM team_accounts WHERE status = 1 ORDER BY {order_clause} LIMIT 1"
+            execute_sql(c, sql)
+            row = c.fetchone()
+            if row:
+                return dict(row)
+            return None
+    except Exception as e:
+        print(f"[{cfg.ts()}] [ERROR] 随机提取 Team 账号失败: {e}")
+        return None
